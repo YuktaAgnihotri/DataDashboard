@@ -1,25 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 
 interface Row {
   orderNumber: string;
   ["Sales Channel"]: string;
-  WarehouseCode: string;
-  ProcuredDate: string;
   OrderDate: string;
-  ShipDate: string;
   DeliveryDate: string;
-  CurrencyCode: string;
-  _SalesTeamID: string;
-  _CustomerID: string;
-  _StoreID: string;
-  _ProductID: string;
-  ["Order Quantity"]: number;
-  ["Discount Applied"]: number;
-  ["Unit Cost"]: number;
-  ["Unit Price"]: number;
 }
 
 interface AggregatedRow {
@@ -33,46 +21,34 @@ interface Props {
 
 export default function DeliveryGroupedBar({ data }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(800); // default width
-
-  useEffect(() => {
-    const resizeObserver = new ResizeObserver((entries) => {
-      if (!entries || entries.length === 0) return;
-      const newWidth = entries[0].contentRect.width;
-      setWidth(newWidth);
-    });
-
-    if (containerRef.current) resizeObserver.observe(containerRef.current);
-
-    return () => resizeObserver.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!data || data.length === 0 || !svgRef.current) return;
 
     const parseDate = d3.timeParse("%d/%m/%Y");
-    const getMonth = (dateStr: string): string => {
+
+    const getMonth = (dateStr: string) => {
       const parsed = parseDate(dateStr);
       return parsed ? d3.timeFormat("%b")(parsed) : "";
     };
-    console.log("got parsed data for bargraph:", parseDate)
 
+    // Group and aggregate delivery duration
     const grouped: Record<string, Record<string, number[]>> = {};
 
     data.forEach((row) => {
       const month = getMonth(row.OrderDate);
       const channel = row["Sales Channel"];
+
       const order = parseDate(row.OrderDate);
       const delivery = parseDate(row.DeliveryDate);
-
       if (!order || !delivery) return;
 
       const diffDays =
-        (delivery.getTime() - order.getTime()) / (1000 * 60 * 60 * 24);
+        (delivery.getTime() - order.getTime()) / (1000 * 3600 * 24);
 
       if (!grouped[month]) grouped[month] = {};
       if (!grouped[month][channel]) grouped[month][channel] = [];
+
       grouped[month][channel].push(diffDays);
     });
 
@@ -86,29 +62,36 @@ export default function DeliveryGroupedBar({ data }: Props) {
       }
     );
 
-    const margin = { top: 40, right: 30, bottom: 60, left: 60 };
+    const subgroups: string[] = Array.from(
+      new Set(data.map((d) => d["Sales Channel"]))
+    );
+
+    const margin = { top: 50, right: 20, bottom: 60, left: 60 };
+    const width = 800 - margin.left - margin.right;
     const height = 450 - margin.top - margin.bottom;
-    const chartWidth = width - margin.left - margin.right;
 
     d3.select(svgRef.current).selectAll("*").remove();
 
     const svg = d3
       .select(svgRef.current)
-      .attr("width", width)
-      .attr("height", height + margin.top + margin.bottom)
+      .attr(
+        "viewBox",
+        `0 0 ${width + margin.left + margin.right} ${
+          height + margin.top + margin.bottom
+        }`
+      )
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const subgroups = Array.from(new Set(data.map((d) => d["Sales Channel"])));
     const groups = aggregated.map((d) => d.month);
 
-    const x0 = d3.scaleBand().domain(groups).range([0, chartWidth]).padding(0.2);
+    const x0 = d3.scaleBand().domain(groups).range([0, width]).padding(0.25);
 
     const x1 = d3
       .scaleBand()
       .domain(subgroups)
       .range([0, x0.bandwidth()])
-      .padding(0.05);
+      .padding(0.1);
 
     const y = d3
       .scaleLinear()
@@ -126,6 +109,20 @@ export default function DeliveryGroupedBar({ data }: Props) {
       .domain(subgroups)
       .range(["#3b82f6", "#22c55e", "#f97316"]);
 
+    // Tooltip
+    const tooltip = d3
+      .select("body")
+      .append("div")
+      .style("position", "absolute")
+      .style("z-index", "10")
+      .style("background", "white")
+      .style("padding", "6px 10px")
+      .style("font-size", "13px")
+      .style("border-radius", "6px")
+      .style("box-shadow", "0px 2px 6px rgba(0,0,0,0.2)")
+      .style("display", "none");
+
+    // Draw bars
     svg
       .append("g")
       .selectAll("g")
@@ -143,33 +140,73 @@ export default function DeliveryGroupedBar({ data }: Props) {
       .enter()
       .append("rect")
       .attr("x", (d) => x1(d.key) ?? 0)
-      .attr("y", (d) => y(d.value))
+      .attr("y", height)
       .attr("width", x1.bandwidth())
-      .attr("height", (d) => height - y(d.value))
-      .attr("fill", (d) => color(d.key) as string)
+      .attr("height", 0)
+      .attr("fill", (d) => color(d.key)!)
+      .style("cursor", "pointer")
+      .on("mouseover", function (event, d) {
+        tooltip.style("display", "block").html(
+          `<b>${d.key}</b><br/>Delivery Days: <b>${d.value.toFixed(1)}</b>`
+        );
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("fill", "#0ea5e9")
+          .attr("opacity", 0.9)
+          .style("filter", "drop-shadow(0px 0px 6px #555)");
+      })
+      .on("mousemove", (event) =>
+        tooltip
+          .style("left", event.pageX + 10 + "px")
+          .style("top", event.pageY - 20 + "px")
+      )
+      .on("mouseout", function () {
+        tooltip.style("display", "none");
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("fill", (d:any) => color(d.key)!)
+          .attr("opacity", 1)
+          .style("filter", "none");
+      })
       .transition()
+      .ease(d3.easeCubicInOut)
       .duration(1200)
-      .ease(d3.easeCubicInOut);
+      .attr("y", (d) => y(d.value))
+      .attr("height", (d) => height - y(d.value));
 
-    svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x0));
+    // Axes
+    svg
+      .append("g")
+      .attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(x0));
+
     svg.append("g").call(d3.axisLeft(y));
 
-    const legend = svg.append("g").attr("transform", `translate(0,-20)`);
+    // Legend
+    const legend = svg.append("g").attr("transform", `translate(0,-30)`);
 
     subgroups.forEach((ch, i) => {
-      const g = legend.append("g").attr("transform", `translate(${i * 120},0)`);
-
-      g.append("rect").attr("width", 15).attr("height", 15).attr("fill", color(ch) as string);
-      g.append("text").attr("x", 20).attr("y", 12).text(ch);
+      const g = legend.append("g").attr("transform", `translate(${i * 140},0)`);
+      g.append("rect")
+        .attr("width", 15)
+        .attr("height", 15)
+        .attr("fill", color(ch)!);
+      g.append("text")
+        .attr("x", 22)
+        .attr("y", 12)
+        .text(ch)
+        .style("font-size", "14px");
     });
-  }, [data, width]);
+  }, [data]);
 
   return (
-    <div ref={containerRef} className="w-full overflow-x-auto">
+    <>
       <h2 className="text-xl font-semibold mb-3">
         Avg Delivery Days per Month by Sales Channel
       </h2>
-      <svg ref={svgRef}></svg>
-    </div>
+      <svg ref={svgRef} style={{ width: "100%", height: "auto" }}></svg>
+    </>
   );
 }

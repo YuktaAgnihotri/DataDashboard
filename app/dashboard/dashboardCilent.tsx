@@ -18,7 +18,7 @@ export default function DashboardClient({data} : DashboardProps) {
 
 
   return (
-    <div className="w-full h-screen bg-neutral-400">
+    <div className="w-full h-[200vh] bg-neutral-400">
       {/* Navbar always visible */}
       <Navbar type={type} setType={setType} />
 
