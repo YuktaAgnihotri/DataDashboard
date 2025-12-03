@@ -107,7 +107,7 @@ export default function DeliveryGroupedBar({ data }: Props) {
     const color = d3
       .scaleOrdinal<string>()
       .domain(subgroups)
-      .range(["#3b82f6", "#22c55e", "#f97316"]);
+      .range(["#3b82f6", "#eab308","#22c55e", "#f97316"  , "#8b5cf6"]);
 
     // Tooltip
     const tooltip = d3
