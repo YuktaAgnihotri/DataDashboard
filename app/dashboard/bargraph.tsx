@@ -56,6 +56,7 @@ export default function DeliveryGroupedBar({ data }: Props) {
       const parsed = parseDate(dateStr);
       return parsed ? d3.timeFormat("%b")(parsed) : "";
     };
+    console.log("got parsed data for bargraph:", parseDate)
 
     const grouped: Record<string, Record<string, number[]>> = {};
 

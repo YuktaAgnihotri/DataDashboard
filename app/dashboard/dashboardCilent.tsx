@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {  useState } from "react";
 import Navbar from "../components/Navbar";
 import Piechart from "./piechart";
 import Bargraph from "./bargraph";
@@ -12,7 +12,7 @@ interface DashboardProps {
 
 export default function DashboardClient({data} : DashboardProps) {
   const [type, setType] = useState<string>("bargraph");
-   
+ console.log("DashboardClient data length:", data.length);   
 
 
 

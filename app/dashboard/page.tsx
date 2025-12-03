@@ -14,7 +14,7 @@ const url = base.replace(/\/$/, "") + "/api/sales";
   console.log("Fetching:", url);
 
   const data = await fetch (url,{cache:"no-store"}).then(res=>res.json());
- console.log("got data", data.length);
+ console.log("got data in page.tsx", data.length);
   
 
   return(<>
