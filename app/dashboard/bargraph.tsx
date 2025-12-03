@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 
 interface Row {
@@ -33,35 +33,45 @@ interface Props {
 
 export default function DeliveryGroupedBar({ data }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(800); // default width
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (!entries || entries.length === 0) return;
+      const newWidth = entries[0].contentRect.width;
+      setWidth(newWidth);
+    });
+
+    if (containerRef.current) resizeObserver.observe(containerRef.current);
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!data || data.length === 0 || !svgRef.current) return;
 
-    // Parse DD/MM/YYYY and extract month
     const parseDate = d3.timeParse("%d/%m/%Y");
     const getMonth = (dateStr: string): string => {
       const parsed = parseDate(dateStr);
       return parsed ? d3.timeFormat("%b")(parsed) : "";
     };
 
-    // Group data
     const grouped: Record<string, Record<string, number[]>> = {};
 
     data.forEach((row) => {
       const month = getMonth(row.OrderDate);
       const channel = row["Sales Channel"];
+      const order = parseDate(row.OrderDate);
+      const delivery = parseDate(row.DeliveryDate);
 
-      const orderDate = parseDate(row.OrderDate);
-      const deliveryDate = parseDate(row.DeliveryDate);
-
-      if (!orderDate || !deliveryDate) return;
+      if (!order || !delivery) return;
 
       const diffDays =
-        (deliveryDate.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+        (delivery.getTime() - order.getTime()) / (1000 * 60 * 60 * 24);
 
       if (!grouped[month]) grouped[month] = {};
       if (!grouped[month][channel]) grouped[month][channel] = [];
-
       grouped[month][channel].push(diffDays);
     });
 
@@ -75,31 +85,23 @@ export default function DeliveryGroupedBar({ data }: Props) {
       }
     );
 
-    // Create chart
     const margin = { top: 40, right: 30, bottom: 60, left: 60 };
-    const width = 800 - margin.left - margin.right;
     const height = 450 - margin.top - margin.bottom;
+    const chartWidth = width - margin.left - margin.right;
 
     d3.select(svgRef.current).selectAll("*").remove();
 
     const svg = d3
-      .select<SVGSVGElement, unknown>(svgRef.current)
-      .attr("width", width + margin.left + margin.right)
+      .select(svgRef.current)
+      .attr("width", width)
       .attr("height", height + margin.top + margin.bottom)
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const subgroups: string[] = Array.from(
-      new Set(data.map((d) => d["Sales Channel"]))
-    ); // e.g. ["Wholesale", "Instore", "Warehouse"]
-
+    const subgroups = Array.from(new Set(data.map((d) => d["Sales Channel"])));
     const groups = aggregated.map((d) => d.month);
 
-    const x0 = d3
-      .scaleBand()
-      .domain(groups)
-      .range([0, width])
-      .padding(0.2);
+    const x0 = d3.scaleBand().domain(groups).range([0, chartWidth]).padding(0.2);
 
     const x1 = d3
       .scaleBand()
@@ -143,37 +145,30 @@ export default function DeliveryGroupedBar({ data }: Props) {
       .attr("y", (d) => y(d.value))
       .attr("width", x1.bandwidth())
       .attr("height", (d) => height - y(d.value))
-      .attr("fill", (d) => color(d.key) as string);
+      .attr("fill", (d) => color(d.key) as string)
+      .transition()
+      .duration(1200)
+      .ease(d3.easeCubicInOut);
 
-    svg
-      .append("g")
-      .attr("transform", `translate(0,${height})`)
-      .call(d3.axisBottom(x0));
-
+    svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x0));
     svg.append("g").call(d3.axisLeft(y));
 
-    // Legend
     const legend = svg.append("g").attr("transform", `translate(0,-20)`);
 
     subgroups.forEach((ch, i) => {
-      const g = legend
-        .append("g")
-        .attr("transform", `translate(${i * 120},0)`);
+      const g = legend.append("g").attr("transform", `translate(${i * 120},0)`);
 
       g.append("rect").attr("width", 15).attr("height", 15).attr("fill", color(ch) as string);
-
       g.append("text").attr("x", 20).attr("y", 12).text(ch);
     });
-  }, [data]);
+  }, [data, width]);
 
   return (
-    <>
-     <div>
+    <div ref={containerRef} className="w-full overflow-x-auto">
       <h2 className="text-xl font-semibold mb-3">
         Avg Delivery Days per Month by Sales Channel
       </h2>
       <svg ref={svgRef}></svg>
     </div>
-    </>
-  )
+  );
 }

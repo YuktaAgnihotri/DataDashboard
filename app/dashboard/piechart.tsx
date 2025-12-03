@@ -14,7 +14,7 @@
 import { useEffect, useRef } from "react";
 import { select } from "d3-selection";
 import { pie, arc } from "d3-shape";
-
+import * as d3 from "d3";
 interface Row {
   ["Sales Channel"]: string;
 }
@@ -95,7 +95,16 @@ console.log("Piechart data:", data.length);
       .on("mouseout", function (this: SVGPathElement) {
         tooltip.style("visibility", "hidden");
         select(this).style("opacity", 1);
-      });
+      })
+       .transition()
+  .duration(1200)
+  .ease(d3.easeCubic)
+  .attrTween("d", function (d: any) {
+    const i = d3.interpolate({ startAngle: 0, endAngle: 0 }, d);
+    return function (t) {
+      return arcGen(i(t)) as string;
+    };
+  });
   }, [data]);
 
   return(
